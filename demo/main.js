@@ -6,10 +6,10 @@ var container
 var camera, controls, scene, renderer
 
 let l = location.hash.slice(1).split(',') // url params
-let h = { nodes:   [+l[0], 3, 10]  // log of the number of nodes
-        , group:   [+l[1], 1, 6]   // log of the size of groups
-        , opacity: [+l[2], 1, 100] // opacity of nodes
-        , special: [+l[3], 1, 100] // the special node
+let h = { nodes:   [+l[0]||6, 3, 10]  // log of the number of nodes
+        , group:   [+l[1]||3, 1, 6]   // log of the size of groups
+        , opacity: [+l[2]||9, 1, 100] // opacity of nodes
+        , special: [+l[3]||7, 1, 100] // the special node
         }
 
 init()
