@@ -1,9 +1,9 @@
 // an exploration of the structure and shape of Cambium
-// NB the rendering portions of this code were cobbed from a long ago code retreat session building a 3D version of the chaos game, hence the ancient version of three.js
+// NB the rendering portions of this code were cobbed from a long ago code retreat session building a 3D version of the chaos game -- hence the ancient version of three.js
 
 
-var container
-var camera, controls, scene, renderer
+let container
+let camera, controls, scene, renderer
 
 let l = location.hash.slice(1).split(',') // url params
 let h = { nodes:   [+l[0]||6, 3, 10]  // log of the number of nodes
@@ -20,6 +20,34 @@ function go(n=h.nodes[0], k=h.group[0], o=h.opacity[0], s=h.special[0]) {
   build_world(n, k, o, s%2**n)
   render()
 }
+
+function onmouse(e) {
+  let raycaster = new THREE.Raycaster()
+  let mouse = new THREE.Vector2()
+
+  // get special
+  mouse.x =  2 * e.offsetX / window.innerWidth  - 1
+  mouse.y = -2 * e.offsetY / window.innerHeight + 1
+
+  raycaster.setFromCamera(mouse, camera)
+  let intersects = raycaster.intersectObjects( scene.children )
+  for(let i=0; i<intersects.length; i++)
+    intersects[ i ].object.material.color.set( 0xff0000 )
+
+  if(!intersects.length)
+    return true
+
+  let special = intersects[0].object.name
+
+  // if special is different rerender
+  if(h.special[0] == special)
+    return true
+
+  h.special[0] = special
+  go()
+}
+window.addEventListener( 'mousemove', onmouse)
+
 
 function render() {
   renderer.render( scene, camera )
@@ -58,6 +86,7 @@ function build_world(n=6, k=3, o=10, s=13) {
                                                          } )
 
           let mesh = new THREE.Mesh( geometry, material )
+          mesh.name = q[y][x][z][p]
 
           mesh.position.x = (z+1) * 200/q[y][x].length
 
