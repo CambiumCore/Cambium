@@ -83,12 +83,48 @@ function build_world(n=6, k=3, o=10, s=13, w=1, a=0) {
     return vs.reduce((acc, x)=>acc+x, 0)
   }
 
-  function ally_mix(as) {
+  let ally_mixers = []
+  ally_mixers[0] = as => { // straightforward mixing: hole if < 2/3 majority, no hole filling,
     let counts = {}
     let limit = 2 * as.length / 3
     let vs = as.filter(x=>x)
-    if(vs.length < 2*as.length / 3)
+
+    if(vs.length < limit)
       return 0
+
+    for(let i=as.length; i; i--) {
+      if(!counts[vs[i]]) {
+        counts[vs[i]] = vs.filter(x=>x===vs[i]).length
+        if(counts[vs[i]] > limit)
+          return vs[i]
+      }
+    }
+    return 0
+  }
+
+  ally_mixers[1] = as => { // mixing with tolerance: ignore holes in ally tally count, only require 2/3m from active responses
+    let counts = {}
+    let vs = as.filter(x=>x)
+    let limit = 2 * vs.length / 3
+
+    for(let i=as.length; i; i--) {
+      if(!counts[vs[i]]) {
+        counts[vs[i]] = vs.filter(x=>x===vs[i]).length
+        if(counts[vs[i]] > limit)
+          return vs[i]
+      }
+    }
+    return 0
+  }
+
+  ally_mixers[2] = as => {
+    let counts = {}
+    let limit = 2 * as.length / 3
+    let vs = as.filter(x=>x)
+
+    if(vs.length < limit)
+      return 0
+
     for(let i=as.length; i; i--) {
       if(!counts[vs[i]]) {
         counts[vs[i]] = vs.filter(x=>x===vs[i]).length
@@ -116,68 +152,24 @@ function build_world(n=6, k=3, o=10, s=13, w=1, a=0) {
               color = 0x000000
           }
 
-          // basic merge algo
+          // various merge algos
           else if(a > 0) {
             let vv = vs[qq][y+1] // v[y][x][z][p]
             let ps = peers(vv, k, n)
 
-            // TODO: include hole effects in values
-            // if(is_hole(qq, s, w))
-            //   color = 0x000000
-
-            // if(!y) { // find our group colour, for merge level 0 (because we aren't visually displaying the committee stage, so they all should have the same colour there)
-            //   vv = committee_mix(ps[0])
-            //   // v[y][x][z][p] = vv
-            // }
-
             if(y < q.length-1){ // push self+ally colour up to next level
               let ax = x%2 ? x-1 : x+1 // ally group stack
               let as = peers(q[y][ax][z][p], k, n,)[y] // peers on this level
-              let aa = ally_mix(as.map(q=>vs[q][y+1])) // ally mixed score
 
-              // find ourselves on the next level up
-              // let dy = y+1
-              // let dx = Math.floor(qq/(k*2**(y+1)))
-              // let gg = q[dy][dx].flat(5)
-              // let ii = gg.indexOf(qq)
-              // let dz = Math.floor(ii/k)
-              // let dp = ii%k
-              // v[dy][dx][dz][dp] = vv+aa
+              let af = ally_mixers[a-1]
+              let aa = af(as.map(q=>vs[q][y+1])) // ally mixed score
 
               vs[qq][y+2] = vv ? vv + aa : 0
-
-              // let rr = reverse(qq, k, y+1)
-              // let ii = smallesse(k, rr[1], y+1, rr[0]).indexOf(qq)
-              // v[y+1][rr[0]-y][rr[1]][ii] = vv+aa
-              // might need to downshift r[0]-y by kk
-              // reverse gives negative i... :[
             }
 
-            // hue = ((allies.reduce((acc,x)=>acc+x, 0) + qq) % hmax) / hmax
             hue = (vv % hmax) / hmax
             color = vv ? hslToRgb(hue, 0.8, 0.5) : 0x0
           }
-
-          // fix reverse:
-          // peers(7, 8, 64)
-          // (4) [Array(8), Array(8), Array(8), Array(8)]0: (8) [0, 1, 2, 3, 4, 5, 6, 7]1: (8) [0, 3, 4, 7, 8, 11, 12, 15]2: (8) [2, 7, 8, 13, 18, 23, 24, 29]3: (8) [7, 8, 17, 26, 35, 44, 53, 62]length: 4__proto__: Array(0)
-          // reverse(62, 8, 3) // 3,7,7 // 2,-1,3 // 1,-5,1 // 0,-5,0 // level, is, shouldbe
-          // (2) [0, 7]
-          // reverse(53, 8, 3) // 3,7,7 // 2,0,0  // 1,1,1  // 0,-4,0 // level, is, shouldbe
-          // (2) [0, 7]
-          // reverse(44, 8, 0) // 3,7,7 // 2,1,1  // 1,-4,0 // 0,-3,0 // level, is, shouldbe
-          // (2) [40, -3]
-          // reverse(35, 8, 3) // 3,7,7 // 2,3,3  // 1,0,0  // 0,-2,0 // level, is, shouldbe
-          // (2) [0, 7]
-          // reverse(26, 8, 0) // 3,7,7 // 2,0,0  // 1,-3,1 // 0,-1,0 // level, is, shouldbe
-          // (2) [24, -1]
-          // reverse(17, 8, 3) // 3,7,7 // 2,1,1  // 1,1,1  // 0,0,0  // level, is, shouldbe
-          // (2) [0, 7]
-          // reverse(8, 8, 0)  // 3,7,7 // 2,2,2  // 1,-2,0 // 0,0,0  // level, is, shouldbe
-          // (2) [8, 0]
-          // reverse(7, 8, 3)  // 3,7,7 // 2,2,2  // 1,0,0  // 0,-6,0 // level, is, shouldbe
-          // (2) [0, 7]
-
 
           // what
           let material =  new THREE.MeshLambertMaterial( { color: color
@@ -207,7 +199,6 @@ function build_world(n=6, k=3, o=10, s=13, w=1, a=0) {
       }
     }
   }
-  console.log(show(vs))
 }
 
 
@@ -265,6 +256,27 @@ function reverse(x, k, l) {
   let i = d>=0 ? d : d+2**l // if negative add l to reverse the modulo
 
   return [p, i]
+
+  // fix reverse:
+  // peers(7, 8, 64)
+  // (4) [Array(8), Array(8), Array(8), Array(8)]0: (8) [0, 1, 2, 3, 4, 5, 6, 7]1: (8) [0, 3, 4, 7, 8, 11, 12, 15]2: (8) [2, 7, 8, 13, 18, 23, 24, 29]3: (8) [7, 8, 17, 26, 35, 44, 53, 62]length: 4__proto__: Array(0)
+  // reverse(62, 8, 3) // 3,7,7 // 2,-1,3 // 1,-5,1 // 0,-5,0 // level, is, shouldbe
+  // (2) [0, 7]
+  // reverse(53, 8, 3) // 3,7,7 // 2,0,0  // 1,1,1  // 0,-4,0 // level, is, shouldbe
+  // (2) [0, 7]
+  // reverse(44, 8, 0) // 3,7,7 // 2,1,1  // 1,-4,0 // 0,-3,0 // level, is, shouldbe
+  // (2) [40, -3]
+  // reverse(35, 8, 3) // 3,7,7 // 2,3,3  // 1,0,0  // 0,-2,0 // level, is, shouldbe
+  // (2) [0, 7]
+  // reverse(26, 8, 0) // 3,7,7 // 2,0,0  // 1,-3,1 // 0,-1,0 // level, is, shouldbe
+  // (2) [24, -1]
+  // reverse(17, 8, 3) // 3,7,7 // 2,1,1  // 1,1,1  // 0,0,0  // level, is, shouldbe
+  // (2) [0, 7]
+  // reverse(8, 8, 0)  // 3,7,7 // 2,2,2  // 1,-2,0 // 0,0,0  // level, is, shouldbe
+  // (2) [8, 0]
+  // reverse(7, 8, 3)  // 3,7,7 // 2,2,2  // 1,0,0  // 0,-6,0 // level, is, shouldbe
+  // (2) [0, 7]
+
 }
 
 function peers(x, k, n) {
