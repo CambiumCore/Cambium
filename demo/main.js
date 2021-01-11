@@ -10,14 +10,17 @@ let h = { nodes:   [+l[0]||6, 3, 10]  // log of the number of nodes
         , group:   [+l[1]||3, 1, 6]   // log of the size of groups
         , opacity: [+l[2]||9, 1, 100] // opacity of nodes
         , special: [+l[3]||7, 1, 100] // the special node
+        , swidth:  [+l[4]||1, 1, 30] // how many special nodes
+        , algorithm:  [+l[4]||0, 0, 3] // which merge algorithm
+        // , colour:  [+l[4]||0, 0, 3] // which colouring mode
         }
 
 init()
 go()
 
-function go(n=h.nodes[0], k=h.group[0], o=h.opacity[0], s=h.special[0]) {
+function go(n=h.nodes[0], k=h.group[0], o=h.opacity[0], s=h.special[0], w=h.swidth[0], a=h.algorithm[0]) {
   clear()
-  build_world(n, k, o, s%2**n)
+  build_world(n, k, o, s%2**n, w, a)
   render()
 }
 
@@ -58,27 +61,125 @@ function clear() {
     scene.remove(scene.children[0])
 }
 
-function build_world(n=6, k=3, o=10, s=13) {
+function build_world(n=6, k=3, o=10, s=13, w=1, a=0) {
   n = 2**n
   k = 2**k
   let q = largesse(n, k)
+  // let v = JSON.parse(JSON.stringify(q)) // a "values" copy of q
+  let vs = {} // values live here: b->[l0,l1,l2,l3] (b is the index, l0 is its value at level 0, and so on)
   let angle = 2*Math.PI/k
   let geometry = new THREE.CylinderGeometry( 0, 5, 8.66, 4, 1 )
   let ppp = peers(s, k, n).pop() //flatMap(x=>x)
+  let hue, opa, color
+  let hmax = n*k
   add_lights(scene)
 
-  for(let y=0; y < q.length; y++) {
-    for(let x=0; x < q[y].length; x++) {
-      for(let z=0; z < q[y][x].length; z++) {
-        for(let p=0; p < q[y][x][z].length; p++) {
+  ;[...Array(n).keys()].forEach(i=>vs[i]=is_hole(i,s,w) ? [0,0] : [i,committee_mix([...Array(k).keys()].map(x=>x+Math.floor(i/k)*k))]) // 28+Math.floor(i/k)*36]) // the "negative one" and zero values
 
-          let hue = q[y][x][z][p]/n
-          let opa = ppp.includes(q[y][x][z][p]) ? 1 : o/100
-          let color = hslToRgb(hue, 0.8, 0.5)
+  function committee_mix(ps) {
+    let vs = ps.filter(q=>q)
+    if(vs.length < 2*ps.length / 3)
+      return 0
+    return vs.reduce((acc, x)=>acc+x, 0)
+  }
 
-          if(q[y][x][z][p] == s)
-            color = 0x000000
+  function ally_mix(as) {
+    let counts = {}
+    let limit = 2 * as.length / 3
+    let vs = as.filter(x=>x)
+    if(vs.length < 2*as.length / 3)
+      return 0
+    for(let i=as.length; i; i--) {
+      if(!counts[vs[i]]) {
+        counts[vs[i]] = vs.filter(x=>x===vs[i]).length
+        if(counts[vs[i]] > limit)
+          return vs[i]
+      }
+    }
+    return 0
+  }
 
+  for(let y=0; y < q.length; y++) {                  // y is merge level (height)
+    for(let x=0; x < q[y].length; x++) {             // x is group index (width)
+      for(let z=0; z < q[y][x].length; z++) {        // z is group stack index (depth)
+        for(let p=0; p < q[y][x][z].length; p++) {   // p is committee index (angle) // THINK: why is this called p?
+
+          let qq = q[y][x][z][p]
+          opa = ppp.includes(qq) ? 1 : o/100
+
+          // colour by node id, instead of its hash value
+          if(a === 0) {
+            hue = qq/n
+            color = hslToRgb(hue, 0.8, 0.5)
+
+            if(qq === s)
+              color = 0x000000
+          }
+
+          // basic merge algo
+          else if(a > 0) {
+            let vv = vs[qq][y+1] // v[y][x][z][p]
+            let ps = peers(vv, k, n)
+
+            // TODO: include hole effects in values
+            // if(is_hole(qq, s, w))
+            //   color = 0x000000
+
+            // if(!y) { // find our group colour, for merge level 0 (because we aren't visually displaying the committee stage, so they all should have the same colour there)
+            //   vv = committee_mix(ps[0])
+            //   // v[y][x][z][p] = vv
+            // }
+
+            if(y < q.length-1){ // push self+ally colour up to next level
+              let ax = x%2 ? x-1 : x+1 // ally group stack
+              let as = peers(q[y][ax][z][p], k, n,)[y] // peers on this level
+              let aa = ally_mix(as.map(q=>vs[q][y+1])) // ally mixed score
+
+              // find ourselves on the next level up
+              // let dy = y+1
+              // let dx = Math.floor(qq/(k*2**(y+1)))
+              // let gg = q[dy][dx].flat(5)
+              // let ii = gg.indexOf(qq)
+              // let dz = Math.floor(ii/k)
+              // let dp = ii%k
+              // v[dy][dx][dz][dp] = vv+aa
+
+              vs[qq][y+2] = vv ? vv + aa : 0
+
+              // let rr = reverse(qq, k, y+1)
+              // let ii = smallesse(k, rr[1], y+1, rr[0]).indexOf(qq)
+              // v[y+1][rr[0]-y][rr[1]][ii] = vv+aa
+              // might need to downshift r[0]-y by kk
+              // reverse gives negative i... :[
+            }
+
+            // hue = ((allies.reduce((acc,x)=>acc+x, 0) + qq) % hmax) / hmax
+            hue = (vv % hmax) / hmax
+            color = vv ? hslToRgb(hue, 0.8, 0.5) : 0x0
+          }
+
+          // fix reverse:
+          // peers(7, 8, 64)
+          // (4) [Array(8), Array(8), Array(8), Array(8)]0: (8) [0, 1, 2, 3, 4, 5, 6, 7]1: (8) [0, 3, 4, 7, 8, 11, 12, 15]2: (8) [2, 7, 8, 13, 18, 23, 24, 29]3: (8) [7, 8, 17, 26, 35, 44, 53, 62]length: 4__proto__: Array(0)
+          // reverse(62, 8, 3) // 3,7,7 // 2,-1,3 // 1,-5,1 // 0,-5,0 // level, is, shouldbe
+          // (2) [0, 7]
+          // reverse(53, 8, 3) // 3,7,7 // 2,0,0  // 1,1,1  // 0,-4,0 // level, is, shouldbe
+          // (2) [0, 7]
+          // reverse(44, 8, 0) // 3,7,7 // 2,1,1  // 1,-4,0 // 0,-3,0 // level, is, shouldbe
+          // (2) [40, -3]
+          // reverse(35, 8, 3) // 3,7,7 // 2,3,3  // 1,0,0  // 0,-2,0 // level, is, shouldbe
+          // (2) [0, 7]
+          // reverse(26, 8, 0) // 3,7,7 // 2,0,0  // 1,-3,1 // 0,-1,0 // level, is, shouldbe
+          // (2) [24, -1]
+          // reverse(17, 8, 3) // 3,7,7 // 2,1,1  // 1,1,1  // 0,0,0  // level, is, shouldbe
+          // (2) [0, 7]
+          // reverse(8, 8, 0)  // 3,7,7 // 2,2,2  // 1,-2,0 // 0,0,0  // level, is, shouldbe
+          // (2) [8, 0]
+          // reverse(7, 8, 3)  // 3,7,7 // 2,2,2  // 1,0,0  // 0,-6,0 // level, is, shouldbe
+          // (2) [0, 7]
+
+
+          // what
           let material =  new THREE.MeshLambertMaterial( { color: color
                                                          , opacity: opa
                                                          , transparent: true
@@ -87,7 +188,9 @@ function build_world(n=6, k=3, o=10, s=13) {
 
           let mesh = new THREE.Mesh( geometry, material )
           mesh.name = q[y][x][z][p]
+          mesh.place = {y, x, z, p}
 
+          // where
           mesh.position.x = (z+1) * 200/q[y][x].length
 
           mesh.position.y = y * 80
@@ -104,6 +207,7 @@ function build_world(n=6, k=3, o=10, s=13) {
       }
     }
   }
+  console.log(show(vs))
 }
 
 
@@ -191,7 +295,8 @@ function histo(xs) {
   return xs.reduce((acc,x)=>{acc[x]=++acc[x]||1; return acc}, {})
 }
 
-let show = x=>JSON.stringify(x, (k,v)=>+v[1]?v+"":v, 2)
+// let show = x=>JSON.stringify(x, (k,v)=>+v[1]?v+"":v, 2)
+function show(x) {return JSON.stringify(x, (k,v)=>+v[1]?v+"":v, 2)}
 
 function test(x, k, l) {
   let q = largesse(k*2**l, k)
@@ -266,6 +371,10 @@ function onWindowResize() {
   renderer.setSize( window.innerWidth, window.innerHeight )
 
   render()
+}
+
+function is_hole(n, s, w) {
+  return n >= s && n < s + w
 }
 
 
